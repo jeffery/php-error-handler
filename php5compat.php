@@ -30,6 +30,8 @@ if (!\interface_exists('Throwable', false)) {
 
 if (!\class_exists('Error', false)) {
     class Error extends Exception implements Throwable {
+        // TODO make this not extend \Exception because it doesn't in PHP7,
+        // but still make it instantiable and implement the same semantics.
     }
 }
 
@@ -44,7 +46,7 @@ if (!\class_exists('AssertionError', false)) {
 }
 
 if (!\class_exists('DivisionByZeroError', false)) {
-    class DivisionByZeroError extends Error {
+    class DivisionByZeroError extends ArithmeticError {
     }
 }
 
