@@ -9,8 +9,8 @@ In PHP7, the class hierarchy is
   	- `...`
   - `Error`
   	- `ArithmeticError`
-  	- `AssertionError`
   	  - `DivisionByZeroError`
+  	- `AssertionError`
   	- `ParseError`
   	- `TypeError`
 
@@ -22,8 +22,8 @@ In PHP5, the class hierarchy is
 - `Throwable`
   - `Error`
   	- `ArithmeticError`
-  	- `AssertionError`
     	- `DivisionByZeroError`
+  	- `AssertionError`
   	- `ParseError`
   	- `TypeError`
 
