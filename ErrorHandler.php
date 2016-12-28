@@ -269,7 +269,7 @@ class IgnoreRepeatedHandler extends WrappedErrorHandler {
     private $seen = array();
 
     public function notifyError(ErrorException $e) {
-        if (!$this->seen('error', $e)) {
+        if (!$this->seen('error', self::createThrowable($e))) {
             parent::notifyError($e);
         }
     }
@@ -281,6 +281,8 @@ class IgnoreRepeatedHandler extends WrappedErrorHandler {
     }
 
     private function seen($key, Throwable $e) {
+        $e = self::unwrapThrowable($e);
+
         $string = \join(' ', array(
             $key,
             $e instanceof \ErrorException ? $e->getSeverity() : '',
