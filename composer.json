@@ -1,0 +1,11 @@
+{
+    "name": "ivt/php-error-handler",
+    "autoload": {
+        "classmap": [""]
+    },
+    "require": {
+        "psr/log": "^1.0",
+        "monolog/monolog": "^1.22",
+        "bugsnag/bugsnag": "^2.6"
+    }
+}
