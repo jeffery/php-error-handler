@@ -225,7 +225,7 @@ abstract class ErrorHandler {
         });
 
         \set_exception_handler(function ($e) use ($self) {
-            $self->notifyThrowable(ErrorHandler::createThrowable($e));
+            $self->notifyThrowable(ErrorHandler::createThrowable($e), true);
         });
 
         if (!$this->bound) {
@@ -250,13 +250,13 @@ abstract class ErrorHandler {
     public function flush() {
     }
 
-    public abstract function notifyThrowable(Throwable $e);
+    public abstract function notifyThrowable(Throwable $e, $fatal);
 
     public abstract function notifyError(ErrorException $e);
 }
 
 class NullHandler extends ErrorHandler {
-    public function notifyThrowable(Throwable $e) {
+    public function notifyThrowable(Throwable $e, $fatal) {
     }
 
     public function notifyError(ErrorException $e) {
@@ -280,8 +280,8 @@ class WrappedErrorHandler extends ErrorHandler {
         $this->handler->notifyError($e);
     }
 
-    public function notifyThrowable(Throwable $e) {
-        $this->handler->notifyThrowable($e);
+    public function notifyThrowable(Throwable $e, $fatal) {
+        $this->handler->notifyThrowable($e, $fatal);
     }
 }
 
@@ -301,7 +301,7 @@ class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
             if ($e->isUserError() || self::isPhpBug61767Fixed())
                 throw $e;
 
-            $this->notifyThrowable(self::createThrowable($e));
+            $this->notifyThrowable(self::createThrowable($e), true);
             exit;
         }
     }
@@ -324,9 +324,9 @@ class IgnoreRepeatedHandler extends WrappedErrorHandler {
         }
     }
 
-    public function notifyThrowable(Throwable $e) {
+    public function notifyThrowable(Throwable $e, $fatal) {
         if (!$this->seen('throwable', $e)) {
-            parent::notifyThrowable($e);
+            parent::notifyThrowable($e, $fatal);
         }
     }
 
@@ -405,8 +405,8 @@ class PsrLogHandler extends ErrorHandler {
         $this->notify(self::createThrowable($e), $class, $level);
     }
 
-    public function notifyThrowable(Throwable $e) {
-        $level = LogLevel::CRITICAL;
+    public function notifyThrowable(Throwable $e, $fatal) {
+        $level = $fatal ? LogLevel::CRITICAL : LogLevel::WARNING;
         $class = \get_class(self::unwrapThrowable($e));
 
         $this->notify($e, $class, $level);
@@ -546,7 +546,7 @@ class BugsnagHandler extends ErrorHandler {
         $this->notification->addError($error, $extra->getMetaData());
     }
 
-    public function notifyThrowable(\Throwable $e, BugsnagExtra $extra = null) {
+    public function notifyThrowable(\Throwable $e, $fatal, BugsnagExtra $extra = null) {
         \ini_set('memory_limit', '-1');
 
         $extra = $extra ?: new BugsnagExtra();
@@ -555,7 +555,7 @@ class BugsnagHandler extends ErrorHandler {
         $config->sendCode = $extra->getSendCode();
 
         $error = \Bugsnag_Error::fromPHPThrowable($config, new \Bugsnag_Diagnostics($config), self::unwrapThrowable($e));
-        $error->setSeverity('error');
+        $error->setSeverity($fatal ? 'error' : 'warning');
 
         $this->notification->addError($error, $extra->getMetaData());
     }
