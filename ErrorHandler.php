@@ -132,6 +132,39 @@ final class ErrorException extends \ErrorException {
     public function isType($types) {
         return (bool)($this->severity & $types);
     }
+
+    public function setCode($code) {
+        $this->code = $code;
+    }
+
+    public function setMessage($message) {
+        $this->message = $message;
+    }
+
+    public function setFile($file) {
+        $this->file = $file;
+    }
+
+    public function setLine($line) {
+        $this->line = $line;
+    }
+
+    public function setSeverity($severity) {
+        $this->severity = $severity;
+    }
+
+    public function setTrace($trace) {
+        $prop = new \ReflectionProperty('Exception', 'trace');
+        $prop->setAccessible(true);
+        $prop->setValue($this, $trace);
+    }
+
+    public function popStackFrame() {
+        $trace = $this->getTrace();
+        if ($trace) {
+            $this->setTrace(\array_slice($trace, 1));
+        }
+    }
 }
 
 abstract class ErrorHandler {
@@ -174,7 +207,9 @@ abstract class ErrorHandler {
         $self = $this;
 
         \set_error_handler(function ($type, $message, $file, $line) use ($self) {
-            $self->notifyError(new ErrorException($message, 0, $type, $file, $line));
+            $error = new ErrorException($message, 0, $type, $file, $line);
+            $error->popStackFrame();
+            $self->notifyError($error);
         });
 
         \set_exception_handler(function ($e) use ($self) {
@@ -188,6 +223,7 @@ abstract class ErrorHandler {
                 $error = ErrorException::getLast();
 
                 if ($error && $error->isFatal() && !$error->isXDebugError()) {
+                    $error->popStackFrame();
                     $self->notifyError($error);
                 }
 
@@ -292,7 +328,7 @@ class IgnoreRepeatedHandler extends WrappedErrorHandler {
     }
 }
 
-class IgnoreWithChanceHandler extends WrappedErrorHandler {
+class FilterWithChanceHandler extends WrappedErrorHandler {
     /** @var float */
     private $probability;
 
@@ -308,6 +344,7 @@ class IgnoreWithChanceHandler extends WrappedErrorHandler {
     }
 
     private function rand() {
+        // Range [0,1)
         return \mt_rand() / (\mt_getrandmax() + 1);
     }
 }
@@ -482,7 +519,6 @@ class BugsnagHandler extends ErrorHandler {
             true // Call it fatal so Bugsnag doesn't waste time generating its own stack trace
         );
 
-        // We only want to send code for fatal ErrorExceptions
         $error->setStacktrace(\Bugsnag_Stacktrace::fromBacktrace($config, $e->getTrace(), $e->getFile(), $e->getLine()));
         $error->setSeverity(self::$levels[$e->getSeverity()]);
 
