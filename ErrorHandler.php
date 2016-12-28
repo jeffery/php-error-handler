@@ -105,12 +105,18 @@ final class ErrorException extends \ErrorException {
         );
     }
 
+    private $context;
+
     public function getConstant() {
         return self::$constants[$this->severity];
     }
 
     public function getName() {
         return self::$names[$this->severity];
+    }
+
+    public function getContext() {
+        return $this->context;
     }
 
     public function isFatal() {
@@ -151,6 +157,10 @@ final class ErrorException extends \ErrorException {
 
     public function setSeverity($severity) {
         $this->severity = $severity;
+    }
+
+    public function setContext($context) {
+        $this->context = $context;
     }
 
     public function setTrace($trace) {
@@ -206,9 +216,11 @@ abstract class ErrorHandler {
     public final function bind() {
         $self = $this;
 
-        \set_error_handler(function ($type, $message, $file, $line) use ($self) {
+        \set_error_handler(function ($type, $message, $file, $line, $context) use ($self) {
             $error = new ErrorException($message, 0, $type, $file, $line);
             $error->popStackFrame();
+            $error->setContext($context);
+            $error->setCode($error->getConstant());
             $self->notifyError($error);
         });
 
@@ -224,6 +236,7 @@ abstract class ErrorHandler {
 
                 if ($error && $error->isFatal() && !$error->isXDebugError()) {
                     $error->popStackFrame();
+                    $error->setCode($error->getConstant());
                     $self->notifyError($error);
                 }
 
@@ -240,6 +253,14 @@ abstract class ErrorHandler {
     public abstract function notifyThrowable(Throwable $e);
 
     public abstract function notifyError(ErrorException $e);
+}
+
+class NullHandler extends ErrorHandler {
+    public function notifyThrowable(Throwable $e) {
+    }
+
+    public function notifyError(ErrorException $e) {
+    }
 }
 
 class WrappedErrorHandler extends ErrorHandler {
