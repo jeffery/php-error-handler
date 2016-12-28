@@ -389,11 +389,11 @@ class BugsnagHandler extends ErrorHandler {
         \E_CORE_WARNING => 'warning',
         \E_COMPILE_ERROR => 'error',
         \E_COMPILE_WARNING => 'warning',
-        \E_USER_ERROR => 'error',
+        \E_USER_ERROR => 'warning', // not actually fatal
         \E_USER_WARNING => 'warning',
         \E_USER_NOTICE => 'info',
         \E_STRICT => 'info',
-        \E_RECOVERABLE_ERROR => 'error',
+        \E_RECOVERABLE_ERROR => 'warning', // not actually fatal
         \E_DEPRECATED => 'info',
         \E_USER_DEPRECATED => 'info',
     );
