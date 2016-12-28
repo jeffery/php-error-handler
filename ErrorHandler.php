@@ -231,9 +231,9 @@ class WrappedErrorHandler extends ErrorHandler {
 class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
     private static function isPhpBug61767Fixed() {
         // Fixed in 5.4.8 and 5.3.18
-        if (\PHP_VERSION_ID > 50400)
-            return \PHP_VERSION_ID > 50408;
-        return \PHP_VERSION_ID > 50318;
+        if (\PHP_VERSION_ID >= 50400)
+            return \PHP_VERSION_ID >= 50408;
+        return \PHP_VERSION_ID >= 50318;
     }
 
     public function notifyError(ErrorException $e) {
