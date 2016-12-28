@@ -122,7 +122,7 @@ final class ErrorException extends \ErrorException {
     }
 
     public function isXDebugError() {
-        return \substr($this->file, 0, 9) !== 'xdebug://';
+        return \substr($this->file, 0, 9) === 'xdebug://';
     }
 
     public function isReportable() {
