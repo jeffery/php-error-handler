@@ -524,17 +524,25 @@ class ErrorPageHandler extends ErrorHandler {
             return;
         }
 
-        if (!\headers_sent()) {
-            \header('HTTP/1.1 500 Internal Server Error', true, 500);
-            \header("Content-Type: text/html; charset=UTF-8", true);
-        }
-
         while (\ob_get_level() > 0 && \ob_end_clean()) {
             // pass
         }
 
-        print $this->generateHtml($e);
+        $html = $this->generateHtml($e);
 
+        if (!\headers_sent()) {
+            \header('HTTP/1.1 500 Internal Server Error', true, 500);
+            \header("Content-Type: text/html; charset=UTF-8", true);
+            // In principle sending Content-Length could let the browser know
+            // that the response has ended once we send that number of bytes.
+            // In practice it doesn't make any difference and Chrome's
+            // "loading" spinner keeps spinning until the PHP process ends. 
+            \header('Content-Length: ' . \strlen($html));
+        }
+
+        print $html;
+
+        // Flush the HTML so the user knows what's up as soon as possible.
         \flush();
     }
 
