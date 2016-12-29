@@ -534,6 +534,8 @@ class ErrorPageHandler extends ErrorHandler {
         }
 
         print $this->generateHtml($e);
+
+        \flush();
     }
 
     public function generateHtml(/** @noinspection PhpUnusedParameterInspection */
