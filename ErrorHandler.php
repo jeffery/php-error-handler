@@ -339,8 +339,8 @@ final class AggregateErrorHandler extends ErrorHandler {
     }
 }
 
-/** Throw ErrorExceptions */
-class ThrowErrorExceptionsHandler extends ErrorHandler {
+/** Throw non-fatal ErrorExceptions */
+class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
     private static function isPhpBug61767Fixed() {
         // Fixed in 5.4.8 and 5.3.18
         if (\PHP_VERSION_ID >= 50400)
@@ -348,8 +348,8 @@ class ThrowErrorExceptionsHandler extends ErrorHandler {
         return \PHP_VERSION_ID >= 50318;
     }
 
-    public function notifyError(ErrorException $e) {
-        if ($e->isFatal()) {
+    public function notifyError(ErrorException $e, $noThrow = false) {
+        if ($noThrow || $e->isFatal()) {
             parent::notifyError($e);
         } else {
             if ($e->isUserError() || self::isPhpBug61767Fixed())
@@ -362,17 +362,15 @@ class ThrowErrorExceptionsHandler extends ErrorHandler {
             exit;
         }
     }
-
-    public function notifyThrowable(Throwable $e, $fatal) {
-    }
 }
 
-/** Filter out non-fatal errors not covered by error_reporting() */
-class FilterErrorReporting extends WrappedErrorHandler {
-    public function notifyError(ErrorException $e) {
-        if ($e->isFatal() || $e->isReportable()) {
-            parent::notifyError($e);
-        }
+/** Throw non-fatal ErrorExceptions if covered by error_reporting() */
+class ThrowReportableErrorExceptionsHandler extends ThrowErrorExceptionsHandler {
+    public function notifyError(ErrorException $e, $noThrow = false) {
+        // Don't throw it if it's not reportable
+        if (!$e->isReportable())
+            $noThrow = true;
+        parent::notifyError($e, $noThrow);
     }
 }
 
