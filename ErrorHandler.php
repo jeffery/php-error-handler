@@ -96,13 +96,15 @@ final class ErrorException extends \ErrorException {
         $error = \error_get_last();
         if (!$error)
             return null;
-        return new self(
+        $self = new self(
             $error['message'],
             0,
             $error['type'],
             $error['file'],
             $error['line']
         );
+        $self->popStackFrame();
+        return $self;
     }
 
     private $context;
@@ -177,6 +179,7 @@ final class ErrorException extends \ErrorException {
     }
 }
 
+/** An abstract means of handling PHP errors and throwables */
 abstract class ErrorHandler {
     /**
      * @param Throwable|Exception $x
@@ -221,6 +224,7 @@ abstract class ErrorHandler {
             $error->popStackFrame();
             $error->setContext($context);
             $error->setCode($error->getConstant());
+
             $self->notifyError($error);
         });
 
@@ -228,6 +232,8 @@ abstract class ErrorHandler {
             $self->notifyThrowable(ErrorHandler::createThrowable($e), true);
         });
 
+        // Don't register our shutdown function more than once, otherwise it'll get called multiple times. Shutdown
+        // functions can't be unregistered or overridden, so once we've registered it once we don't have to again.
         if (!$this->bound) {
             \register_shutdown_function(function () use ($self) {
                 \ini_set('memory_limit', '-1');
@@ -237,6 +243,7 @@ abstract class ErrorHandler {
                 if ($error && $error->isFatal() && !$error->isXDebugError()) {
                     $error->popStackFrame();
                     $error->setCode($error->getConstant());
+
                     $self->notifyError($error);
                 }
 
@@ -250,8 +257,19 @@ abstract class ErrorHandler {
     public function flush() {
     }
 
+    /**
+     * @param Throwable $e Any throwable. May be an ErrorException that was thrown and is thus treated as an exception
+     *                     rather than a PHP error.
+     * @param bool $fatal True for uncaught throwables, false for throwables given directly to the handler without
+     *                     being thrown.
+     * @return void
+     */
     public abstract function notifyThrowable(Throwable $e, $fatal);
 
+    /**
+     * @param ErrorException $e
+     * @return void
+     */
     public abstract function notifyError(ErrorException $e);
 }
 
@@ -285,7 +303,44 @@ class WrappedErrorHandler extends ErrorHandler {
     }
 }
 
-class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
+final class AggregateErrorHandler extends ErrorHandler {
+    /** @var ErrorHandler[] */
+    private $handlers = array();
+
+    public function __construct(array $handlers = array()) {
+        $this->handlers = $handlers;
+    }
+
+    public function notifyThrowable(Throwable $e, $fatal) {
+        foreach ($this->handlers as $handler) {
+            $handler->notifyThrowable($e, $fatal);
+        }
+    }
+
+    public function notifyError(ErrorException $e) {
+        foreach ($this->handlers as $handler) {
+            $handler->notifyError($e);
+        }
+    }
+
+    public function flush() {
+        parent::flush();
+        foreach ($this->handlers as $handler) {
+            $handler->flush();
+        }
+    }
+
+    public function append(ErrorHandler $handler) {
+        $this->handlers[] = $handler;
+    }
+
+    public function prepend(ErrorHandler $handler) {
+        \array_unshift($this->handlers, $handler);
+    }
+}
+
+/** Throw ErrorExceptions */
+class ThrowErrorExceptionsHandler extends ErrorHandler {
     private static function isPhpBug61767Fixed() {
         // Fixed in 5.4.8 and 5.3.18
         if (\PHP_VERSION_ID >= 50400)
@@ -297,17 +352,23 @@ class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
         if ($e->isFatal()) {
             parent::notifyError($e);
         } else {
-
             if ($e->isUserError() || self::isPhpBug61767Fixed())
                 throw $e;
 
+            // PHP Bug 61767 prohibits us from throwing exceptions in an error handler.
+            // If that bug isn't fixed, bypass all the catch/finally blocks and handle it as
+            // an uncaught exception and exit.
             $this->notifyThrowable(self::createThrowable($e), true);
             exit;
         }
     }
+
+    public function notifyThrowable(Throwable $e, $fatal) {
+    }
 }
 
-class ThrowReportableErrorExceptionsHandler extends ThrowErrorExceptionsHandler {
+/** Filter out non-fatal errors not covered by error_reporting() */
+class FilterErrorReporting extends WrappedErrorHandler {
     public function notifyError(ErrorException $e) {
         if ($e->isFatal() || $e->isReportable()) {
             parent::notifyError($e);
@@ -315,17 +376,18 @@ class ThrowReportableErrorExceptionsHandler extends ThrowErrorExceptionsHandler 
     }
 }
 
+/** Ignore repeated non-fatal errors and throwables */
 class IgnoreRepeatedHandler extends WrappedErrorHandler {
     private $seen = array();
 
     public function notifyError(ErrorException $e) {
-        if (!$this->seen('error', self::createThrowable($e))) {
+        if ($e->isFatal() || !$this->seen('error', self::createThrowable($e))) {
             parent::notifyError($e);
         }
     }
 
     public function notifyThrowable(Throwable $e, $fatal) {
-        if (!$this->seen('throwable', $e)) {
+        if ($fatal || !$this->seen('throwable', $e)) {
             parent::notifyThrowable($e, $fatal);
         }
     }
@@ -335,6 +397,7 @@ class IgnoreRepeatedHandler extends WrappedErrorHandler {
 
         $string = \join(' ', array(
             $key,
+            \get_class($e),
             $e instanceof \ErrorException ? $e->getSeverity() : '',
             $e->getCode(),
             $e->getMessage(),
@@ -349,7 +412,8 @@ class IgnoreRepeatedHandler extends WrappedErrorHandler {
     }
 }
 
-class FilterWithChanceHandler extends WrappedErrorHandler {
+/** Only let non-fatal PHP errors through with a given probability */
+class FilterErrorsWithChanceHandler extends WrappedErrorHandler {
     /** @var float */
     private $probability;
 
@@ -370,7 +434,9 @@ class FilterWithChanceHandler extends WrappedErrorHandler {
     }
 }
 
+/** Log errors to a Psr logger */
 class PsrLogHandler extends ErrorHandler {
+    /** Yanked from Monolog\ErrorHandler::defaultErrorLevelMap() */
     private static $levels = array(
         \E_ERROR => LogLevel::CRITICAL,
         \E_WARNING => LogLevel::WARNING,
@@ -424,11 +490,12 @@ class PsrLogHandler extends ErrorHandler {
     }
 }
 
-class BrowserLogger extends \Psr\Log\AbstractLogger {
+/** Log to the web browser's console */
+final class BrowserLogger extends \Psr\Log\AbstractLogger {
     private $logger;
 
-    public function __construct() {
-        $this->logger = new \Monolog\Logger('PHP Errors');
+    public function __construct($name = 'PHP Errors') {
+        $this->logger = new \Monolog\Logger($name);
         $this->logger->pushHandler(new \Monolog\Handler\BrowserConsoleHandler());
     }
 
@@ -437,27 +504,102 @@ class BrowserLogger extends \Psr\Log\AbstractLogger {
     }
 }
 
+/** Render an error page for errors on screen. On the CLI, just dumps the error to STDERR. */
+class ErrorPageHandler extends ErrorHandler {
+    public function notifyThrowable(Throwable $e, $fatal) {
+        if (!$fatal)
+            return;
+
+        $this->printErrorPage($e);
+    }
+
+    public function notifyError(ErrorException $e) {
+        if (!$e->isFatal())
+            return;
+
+        $this->printErrorPage(self::createThrowable($e));
+    }
+
+    private function printErrorPage(Throwable $e) {
+        if (\PHP_SAPI === 'cli') {
+            \fwrite(\STDERR, $this->generatePlainText($e));
+            return;
+        }
+
+        if (!\headers_sent()) {
+            \header('HTTP/1.1 500 Internal Server Error', true, 500);
+            \header("Content-Type: text/html; charset=UTF-8", true);
+        }
+
+        while (\ob_get_level() > 0 && \ob_end_clean()) {
+            // pass
+        }
+
+        print $this->generateHtml($e);
+    }
+
+    public function generateHtml(/** @noinspection PhpUnusedParameterInspection */
+        Throwable $e) {
+        return '
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<title>An error has occurred. Please try again later.</title>
+	</head>
+	<body>
+		<pre style="
+			white-space: pre;
+			font-family: \'DejaVu Sans Mono\', \'Consolas\', \'Menlo\', monospace;
+			font-size: 10pt;
+			color: #000000;
+			display: block;
+			background: white;
+			border: none;
+			margin: 0;
+			padding: 0;
+			line-height: 16px;
+			width: 100%;
+		">An error has occurred. Please try again later.</pre>
+	</body>
+</html>
+';
+    }
+
+    public function generatePlainText(Throwable $e) {
+        return $e->__toString() . "\n";
+    }
+}
+
+/**
+ * Send errors and throwables to Bugsnag
+ */
 class BugsnagHandler extends ErrorHandler {
     private static $levels = array(
+        // Real fatal errors
         \E_ERROR => 'error',
-        \E_WARNING => 'warning',
         \E_PARSE => 'error',
-        \E_NOTICE => 'info',
-        \E_CORE_ERROR => 'error',
-        \E_CORE_WARNING => 'warning',
         \E_COMPILE_ERROR => 'error',
+        \E_CORE_ERROR => 'error',
+
+        // Warnings and pseudo-fatals
+        \E_WARNING => 'warning',
+        \E_CORE_WARNING => 'warning',
         \E_COMPILE_WARNING => 'warning',
         \E_USER_ERROR => 'warning', // not actually fatal
         \E_USER_WARNING => 'warning',
+        \E_RECOVERABLE_ERROR => 'warning', // not actually fatal
+
+        // Notices
+        \E_NOTICE => 'info',
         \E_USER_NOTICE => 'info',
         \E_STRICT => 'info',
-        \E_RECOVERABLE_ERROR => 'warning', // not actually fatal
         \E_DEPRECATED => 'info',
         \E_USER_DEPRECATED => 'info',
     );
 
     private static function getContext() {
-        if (PHP_SAPI === 'cli' && isset($_SERVER['argv'])) {
+        if (\PHP_SAPI === 'cli' && isset($_SERVER['argv'])) {
             $args = array();
             foreach ($_SERVER['argv'] as $arg) {
                 $args[] = \escapeshellarg($arg);
@@ -478,13 +620,14 @@ class BugsnagHandler extends ErrorHandler {
     /** @var \Bugsnag_Notification */
     private $notification;
 
-    public function __construct() {
+    public function __construct($apiKey) {
         $config = new \Bugsnag_Configuration;
-        $config->filters = array(); // Defaults to ['password'] and causes slowness in Bugsnag_Error::cleanupObj
+        $config->apiKey = $apiKey;
+        $config->filters = array(); // Defaults to ['password'] which causes slowness in Bugsnag_Error::cleanupObj
         $config->context = self::getContext();
         $config->sendSession = false;
 
-        // cURL by default sends a "Expect: 100-Continue" header and waits for a "100 Continue" response
+        // cURL by default sends an "Expect: 100-Continue" header and waits for a "100 Continue" response
         // before sending the body. `bugsnag-agent` for some reason takes a whole second to respond "100 Continue",
         // slowing everything down. So disable this behaviour by blanking out the "Expect" header.
         // We need to include "Content-Type: application/json" because that's what the Bugsnag library had
@@ -500,10 +643,6 @@ class BugsnagHandler extends ErrorHandler {
         $this->notification = new \Bugsnag_Notification($config);
     }
 
-    public function setApiKey($key) {
-        $this->config->apiKey = $key;
-    }
-
     public function setEndpoint($endpoint) {
         $this->config->endpoint = $endpoint;
     }
@@ -514,21 +653,21 @@ class BugsnagHandler extends ErrorHandler {
 
     public function setProjectRoot($root) {
         $this->config->setProjectRoot($root);
+        // $this->config->setProjectRoot() will call setStripPath() automatically, but only for the first call.
+        $this->config->setStripPath($root);
     }
 
-    public function setStripPath($path) {
-        $this->config->setStripPath($path);
+    public function getProjectRoot() {
+        return $this->config->projectRoot;
     }
 
-    public function notifyError(ErrorException $e, BugsnagExtra $extra = null) {
+    public function notifyError(ErrorException $e, array $metadata = array()) {
         if ($e->isFatal()) {
             \ini_set('memory_limit', '-1');
         }
 
-        $extra = $extra ?: new BugsnagExtra();
-
         $config = clone $this->config;
-        $config->sendCode = $extra->getSendCode();
+        $config->sendCode = $e->isFatal(); // Only send code for fatal errors.
 
         $error = \Bugsnag_Error::fromPHPError(
             $config,
@@ -543,21 +682,19 @@ class BugsnagHandler extends ErrorHandler {
         $error->setStacktrace(\Bugsnag_Stacktrace::fromBacktrace($config, $e->getTrace(), $e->getFile(), $e->getLine()));
         $error->setSeverity(self::$levels[$e->getSeverity()]);
 
-        $this->notification->addError($error, $extra->getMetaData());
+        $this->notification->addError($error, $metadata);
     }
 
-    public function notifyThrowable(\Throwable $e, $fatal, BugsnagExtra $extra = null) {
+    public function notifyThrowable(\Throwable $e, $fatal, array $metadata = array()) {
         \ini_set('memory_limit', '-1');
 
-        $extra = $extra ?: new BugsnagExtra();
-
         $config = clone $this->config;
-        $config->sendCode = $extra->getSendCode();
+        $config->sendCode = true;
 
         $error = \Bugsnag_Error::fromPHPThrowable($config, new \Bugsnag_Diagnostics($config), self::unwrapThrowable($e));
         $error->setSeverity($fatal ? 'error' : 'warning');
 
-        $this->notification->addError($error, $extra->getMetaData());
+        $this->notification->addError($error, $metadata);
     }
 
     public function flush() {
@@ -565,25 +702,138 @@ class BugsnagHandler extends ErrorHandler {
     }
 }
 
-final class BugsnagExtra {
-    private $metaData = array();
-    private $sendCode = true;
+/**
+ * Same as the Bugsnag handler but generates Fail Whale dumps, saves them in an S3 bucket with a random name and
+ * attaches a link to it to the Bugsnag error under the "Fail Whale" tab.
+ */
+class FailWhaleBugsnagHandler extends BugsnagHandler {
+    private $s3Client;
+    private $bucket;
 
-    public function getMetaData() {
-        return $this->metaData;
+    public function __construct($apiKey, \Aws\S3\S3Client $s3Client, $bucket) {
+        parent::__construct($apiKey);
+        $this->s3Client = $s3Client;
+        $this->bucket = $bucket;
     }
 
-    public function setMetaData($metaData) {
-        $this->metaData = $metaData;
+    public function notifyError(ErrorException $e, array $metadata = array()) {
+        if ($e->isFatal())
+            $metadata = $this->addFailWhale(self::createThrowable($e), $metadata);
+
+        parent::notifyError($e, $metadata);
     }
 
-    public function getSendCode() {
-        return $this->sendCode;
+    public function notifyThrowable(Throwable $e, $fatal, array $metadata = array()) {
+        $metadata = $this->addFailWhale($e, $metadata);
+
+        parent::notifyThrowable($e, $fatal, $metadata);
     }
 
-    public function setSendCode($sendCode) {
-        $this->sendCode = $sendCode;
+    private function addFailWhale(Throwable $e, array $metadata) {
+        $dumpTime = null;
+        $s3Time = null;
+
+        try {
+            $secs = \microtime(true);
+
+            $html = _FailWhale::generate($e, $this->getProjectRoot());
+            $dumpTime = $this->formatTime(\microtime(true) - $secs);
+
+            $secs = \microtime(true);
+            $link = $this->save($html);
+            $s3Time = $this->formatTime(\microtime(true) - $secs);
+        } catch (\Exception $e) {
+            $link = 'error sending fail whale to s3: ' . $e->getMessage();
+        }
+
+        $metadata['Fail Whale'] = array(
+            'link' => $link,
+            'time' => array(
+                'generate' => $dumpTime,
+                'send to s3' => $s3Time,
+            ),
+        );
+
+        return $metadata;
+    }
+
+    private function formatTime($t) {
+        $s = \sprintf('%02d:%02d:%05.3f', $t / 3600, $t / 60 % 60, \fmod($t, 60));
+        $s = \ltrim($s, '0:');
+        return $s;
+    }
+
+    private function randomString($length) {
+        $ret = '';
+        while (\strlen($ret) < $length) {
+            $ret .= \str_pad(\mt_rand(0, 999999999), 9, '0', \STR_PAD_LEFT);
+        }
+        return \substr($ret, 0, $length);
+    }
+
+    private function save($html) {
+        $filename = $this->randomString(20) . '.html';
+
+        $this->s3Client->putObject(array(
+            'Bucket' => $this->bucket,
+            'Key' => $filename,
+            'Body' => $html,
+            // not sure if this is needed or if S3 will figure it out by itself
+            'ContentType' => 'text/html; charset=UTF-8',
+            // since we have no control over what data we are storing here, we should probably tell S3 to encrypt it
+            'ServerSideEncryption' => 'AES256',
+        ));
+
+        return $this->s3Client->getObjectUrl($this->bucket, $filename, '+1 month');
     }
 }
 
+/**
+ * Shows a Fail Whale dump for the error on screen, and also saves it to /tmp/latest-fail-whale.html if possible.
+ */
+class FailWhaleErrorPageHandler extends ErrorPageHandler {
+    private $projectRoot;
+
+    public function __construct($projectRoot) {
+        $this->projectRoot = $projectRoot;
+    }
+
+    public function generateHtml(Throwable $e) {
+        $dump = _FailWhale::generate($e, $this->projectRoot);
+
+        $this->trySaveLocal($dump);
+
+        return $dump;
+    }
+
+    private function trySaveLocal($html) {
+        try {
+            $file = \sys_get_temp_dir() . \DIRECTORY_SEPARATOR . 'latest-fail-whale.html';
+            \file_put_contents($file, $html);
+            if ((\fileperms($file) & 0666) !== 0666)
+                \chmod($file, 0666);
+        } catch (\Exception $e) {
+            // best effort
+        }
+    }
+}
+
+final class _FailWhale {
+    public static function generate(\Throwable $e, $projectRoot) {
+        $e = ErrorHandler::unwrapThrowable($e);
+
+        $settings = new \FailWhale\IntrospectionSettings;
+
+        $settings->maxArrayEntries = 100;
+        $settings->maxStringLength = 10000;
+        $settings->fileNamePrefix = \rtrim($projectRoot, \DIRECTORY_SEPARATOR) . \DIRECTORY_SEPARATOR;
+
+        $html = \FailWhale\Value::introspectException($e, $settings)->toHTML();
+
+        return $html;
+    }
+
+    private function __construct() {
+    }
+}
 
