@@ -5,7 +5,7 @@
     },
     "require": {
         "psr/log": "^1.0",
-        "monolog/monolog": "^1.22",
+        "monolog/monolog": "^1.12",
         "bugsnag/bugsnag": "^2.6",
         "fail-whale/fail-whale": "^0.1.0",
         "aws/aws-sdk-php": "2.*"
