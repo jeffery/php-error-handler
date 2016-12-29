@@ -193,6 +193,7 @@ abstract class ErrorHandler {
         // In PHP5, Exceptions are not Throwable, so we have to wrap it to make it Throwable
         if ($x instanceof \Exception)
             return new ThrowableException($x);
+        // Let other things like NULL pass through.
         return $x;
     }
 
@@ -213,7 +214,6 @@ abstract class ErrorHandler {
     }
 
     public function __destruct() {
-        $this->flush();
     }
 
     public final function bind() {
@@ -254,6 +254,14 @@ abstract class ErrorHandler {
         }
     }
 
+    /**
+     * Destructors are not called in the case of a fatal error, so if your class has data buffered that it needs to
+     * write somewhere, you should override this method and do it there in addition to doing it in __destruct().
+     *
+     * This method is not called by the destructor by default because error handlers that wrap other error handlers
+     * will override flush() and call it recursively, and object destructors are called by PHP for every object in
+     * an object graph, which would result in an exponential number of flush() calls.  
+     */
     public function flush() {
     }
 
@@ -641,7 +649,7 @@ class BugsnagHandler extends ErrorHandler {
         // We need to include "Content-Type: application/json" because that's what the Bugsnag library had
         // there by default.
         $config->curlOptions = array(
-            CURLOPT_HTTPHEADER => array(
+            \CURLOPT_HTTPHEADER => array(
                 'Expect:',
                 'Content-Type: application/json',
             ),
@@ -649,6 +657,10 @@ class BugsnagHandler extends ErrorHandler {
 
         $this->config = $config;
         $this->notification = new \Bugsnag_Notification($config);
+    }
+
+    public function __destruct() {
+        $this->flush();
     }
 
     public function setEndpoint($endpoint) {
