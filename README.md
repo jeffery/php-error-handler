@@ -27,7 +27,7 @@ Any `ErrorHandler` can be bound to PHP's error handling events with `$handler->b
 For example, to send all your problems to Bugsnag:
 
 ```php
-(new BugsnagHandler(...))->bind();
+(new BugsnagHandler('api key'))->bind();
 ```
 
 ### `ErrorException`
