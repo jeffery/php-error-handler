@@ -8,7 +8,7 @@ namespace IVT\ErrorHandler;
 
 ### `ErrorHandler`
 
-And `ErrorHandler` is some means of handling PHP errors (fatal and non-fatal) and uncaught `Throwable`s. It defines three methods implementable by sub classes:
+`ErrorHandler` is some means of handling PHP errors (fatal and non-fatal) and uncaught `Throwable`s. It defines three methods implementable by sub classes:
 
 - `notifyError(ErrorException $e): void`
 
@@ -16,7 +16,7 @@ And `ErrorHandler` is some means of handling PHP errors (fatal and non-fatal) an
 
 - `notifyThrowable(Throwable $e, bool $fatal): void`
 
-  Handle an uncaught `Throwable`. A `Throwable` can be given directly to an error handler to log it without throwing by calling `notifyThrowable($e, false)`.
+  Handle an uncaught `Throwable`. A `Throwable` can be given directly to an error handler to log it without throwing by calling `->notifyThrowable($e, false)`.
 
 - `flush(): void`
 
