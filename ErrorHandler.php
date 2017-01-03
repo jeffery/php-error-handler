@@ -103,7 +103,7 @@ final class ErrorException extends \ErrorException {
             $error['file'],
             $error['line']
         );
-        $self->popStackFrame();
+        $self->setTrace(array());
         return $self;
     }
 
@@ -241,7 +241,6 @@ abstract class ErrorHandler {
                 $error = ErrorException::getLast();
 
                 if ($error && $error->isFatal() && !$error->isXDebugError()) {
-                    $error->popStackFrame();
                     $error->setCode($error->getConstant());
 
                     $self->notifyError($error);
