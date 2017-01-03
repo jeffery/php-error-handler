@@ -434,8 +434,8 @@ class FilterErrorsWithChanceHandler extends WrappedErrorHandler {
         }
     }
 
+    /** @return float in the range [0,1) */
     private function rand() {
-        // Range [0,1)
         return \mt_rand() / (\mt_getrandmax() + 1);
     }
 }
@@ -838,6 +838,7 @@ class FailWhaleErrorPageHandler extends ErrorPageHandler {
     }
 }
 
+/** @internal */
 final class _FailWhale {
     public static function generate(\Throwable $e, $projectRoot) {
         $e = ErrorHandler::unwrapThrowable($e);
