@@ -356,8 +356,12 @@ class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
         return \PHP_VERSION_ID >= 50318;
     }
 
-    public function notifyError(ErrorException $e, $noThrow = false) {
-        if ($noThrow || $e->isFatal()) {
+    public function shouldThrow(ErrorException $e) {
+        return true;
+    }
+
+    public function notifyError(ErrorException $e) {
+        if (!$this->shouldThrow($e) || $e->isFatal()) {
             parent::notifyError($e);
         } else {
             if ($e->isUserError() || self::isPhpBug61767Fixed())
@@ -374,11 +378,8 @@ class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
 
 /** Throw non-fatal ErrorExceptions if covered by error_reporting() */
 class ThrowReportableErrorExceptionsHandler extends ThrowErrorExceptionsHandler {
-    public function notifyError(ErrorException $e, $noThrow = false) {
-        // Don't throw it if it's not reportable
-        if (!$e->isReportable())
-            $noThrow = true;
-        parent::notifyError($e, $noThrow);
+    public function shouldThrow(ErrorException $e) {
+        return $e->isReportable() && parent::shouldThrow($e);
     }
 }
 
