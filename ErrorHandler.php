@@ -45,7 +45,8 @@ if (\PHP_VERSION_ID < 70000) {
         }
 
         public function getPrevious() {
-            return ErrorHandler::createThrowable($this->exc->getPrevious());
+            $previous = $this->exc->getPrevious();
+            return $previous ? ErrorHandler::createThrowable($previous) : null;
         }
 
         public function __toString() {
@@ -193,8 +194,8 @@ abstract class ErrorHandler {
         // In PHP5, Exceptions are not Throwable, so we have to wrap it to make it Throwable
         if ($x instanceof \Exception)
             return new ThrowableException($x);
-        // Let other things like NULL pass through.
-        return $x;
+        // Nothing else is acceptable.
+        throw new Exception("Can't convert " . gettype($x) . " to a Throwable");
     }
 
     /**
