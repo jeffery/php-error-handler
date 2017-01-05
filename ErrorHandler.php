@@ -45,7 +45,8 @@ if (\PHP_VERSION_ID < 70000) {
         }
 
         public function getPrevious() {
-            return ErrorHandler::createThrowable($this->exc->getPrevious());
+            $prev = $this->exc->getPrevious();
+            return $prev ? ErrorHandler::createThrowable($prev) : null;
         }
 
         public function __toString() {
@@ -103,7 +104,8 @@ final class ErrorException extends \ErrorException {
             $error['file'],
             $error['line']
         );
-        $self->popStackFrame();
+        // We don't have a trace for the last error
+        $self->setTrace(array());
         return $self;
     }
 
@@ -193,8 +195,9 @@ abstract class ErrorHandler {
         // In PHP5, Exceptions are not Throwable, so we have to wrap it to make it Throwable
         if ($x instanceof \Exception)
             return new ThrowableException($x);
-        // Let other things like NULL pass through.
-        return $x;
+        // Nothing else is acceptable.
+        $type = \is_object($x) ? \get_class($x) : \gettype($x);
+        throw new Exception("Can't convert a $type to a Throwable");
     }
 
     /**
@@ -241,7 +244,6 @@ abstract class ErrorHandler {
                 $error = ErrorException::getLast();
 
                 if ($error && $error->isFatal() && !$error->isXDebugError()) {
-                    $error->popStackFrame();
                     $error->setCode($error->getConstant());
 
                     $self->notifyError($error);
@@ -260,7 +262,7 @@ abstract class ErrorHandler {
      *
      * This method is not called by the destructor by default because error handlers that wrap other error handlers
      * will override flush() and call it recursively, and object destructors are called by PHP for every object in
-     * an object graph, which would result in an exponential number of flush() calls.  
+     * an object graph, which would result in an exponential number of flush() calls.
      */
     public function flush() {
     }
@@ -356,8 +358,13 @@ class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
         return \PHP_VERSION_ID >= 50318;
     }
 
-    public function notifyError(ErrorException $e, $noThrow = false) {
-        if ($noThrow || $e->isFatal()) {
+    public function shouldThrow(/** @noinspection PhpUnusedParameterInspection */
+        ErrorException $e) {
+        return true;
+    }
+
+    public function notifyError(ErrorException $e) {
+        if ($e->isFatal() || !$this->shouldThrow($e)) {
             parent::notifyError($e);
         } else {
             if ($e->isUserError() || self::isPhpBug61767Fixed())
@@ -374,11 +381,8 @@ class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
 
 /** Throw non-fatal ErrorExceptions if covered by error_reporting() */
 class ThrowReportableErrorExceptionsHandler extends ThrowErrorExceptionsHandler {
-    public function notifyError(ErrorException $e, $noThrow = false) {
-        // Don't throw it if it's not reportable
-        if (!$e->isReportable())
-            $noThrow = true;
-        parent::notifyError($e, $noThrow);
+    public function shouldThrow(ErrorException $e) {
+        return $e->isReportable() && parent::shouldThrow($e);
     }
 }
 
@@ -434,8 +438,8 @@ class FilterErrorsWithChanceHandler extends WrappedErrorHandler {
         }
     }
 
+    /** @return float in the range [0,1) */
     private function rand() {
-        // Range [0,1)
         return \mt_rand() / (\mt_getrandmax() + 1);
     }
 }
@@ -840,6 +844,7 @@ class FailWhaleErrorPageHandler extends ErrorPageHandler {
     }
 }
 
+/** @internal */
 final class _FailWhale {
     public static function generate(\Throwable $e, $projectRoot) {
         $e = ErrorHandler::unwrapThrowable($e);

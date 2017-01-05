@@ -24,6 +24,8 @@ namespace IVT\ErrorHandler;
 
 Any `ErrorHandler` can be bound to PHP's error handling events with `$handler->bind()`. `set_error_handler()`, `set_exception_handler()` and `register_shutdown_function()` will be called appropriately. `->bind()` can be safely called multiple times.
 
+The shutdown handler and error handler can be set again with `set_shutdown_handler()` and `set_error_handler()` and restored with `restore_shutdown_handler()` and `restore_error_handler()`, however the shutdown handler (fatal error handler) will always be bound and cannot be unbound. 
+
 For example, to send all your problems to Bugsnag:
 
 ```php
@@ -67,14 +69,14 @@ Displays a [Fail Whale](https://github.com/jesseschalken/fail-whale) dump for fa
 
 A polyfill for `Throwable` is included, however on PHP5 `Exception` does not extend it since `Exception` is defined by the runtime and cannot be made to extend an interface by user code.
 
-In PHP7, the class hierarchy is
+So in PHP7 the class hierarchy is
 
 - `Throwable`
   - `Exception`
   	- `...`
   - `...`
 
-In PHP5, the class hierarchy is
+And in PHP5 the class hierarchy is
 
 - `Exception`
   - `...`
