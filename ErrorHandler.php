@@ -707,7 +707,9 @@ class BugsnagHandler extends ErrorHandler {
     }
 
     public function notifyThrowable(\Throwable $e, $fatal, array $metadata = array()) {
-        \ini_set('memory_limit', '-1');
+        if ($fatal) {
+            \ini_set('memory_limit', '-1');
+        }
 
         $config = clone $this->config;
         $config->sendCode = true;
