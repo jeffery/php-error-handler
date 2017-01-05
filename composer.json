@@ -1,5 +1,7 @@
 {
     "name": "ivt/php-error-handler",
+    "type": "library",
+    "license": "proprietary",
     "autoload": {
         "classmap": [""]
     },
