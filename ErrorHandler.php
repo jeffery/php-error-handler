@@ -45,8 +45,8 @@ if (\PHP_VERSION_ID < 70000) {
         }
 
         public function getPrevious() {
-            $previous = $this->exc->getPrevious();
-            return $previous ? ErrorHandler::createThrowable($previous) : null;
+            $prev = $this->exc->getPrevious();
+            return $prev ? ErrorHandler::createThrowable($prev) : null;
         }
 
         public function __toString() {
@@ -104,6 +104,7 @@ final class ErrorException extends \ErrorException {
             $error['file'],
             $error['line']
         );
+        // We don't have a trace for the last error
         $self->setTrace(array());
         return $self;
     }
@@ -195,7 +196,8 @@ abstract class ErrorHandler {
         if ($x instanceof \Exception)
             return new ThrowableException($x);
         // Nothing else is acceptable.
-        throw new Exception("Can't convert " . gettype($x) . " to a Throwable");
+        $type = \is_object($x) ? \get_class($x) : \gettype($x);
+        throw new Exception("Can't convert a $type to a Throwable");
     }
 
     /**
@@ -260,7 +262,7 @@ abstract class ErrorHandler {
      *
      * This method is not called by the destructor by default because error handlers that wrap other error handlers
      * will override flush() and call it recursively, and object destructors are called by PHP for every object in
-     * an object graph, which would result in an exponential number of flush() calls.  
+     * an object graph, which would result in an exponential number of flush() calls.
      */
     public function flush() {
     }
@@ -356,12 +358,13 @@ class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
         return \PHP_VERSION_ID >= 50318;
     }
 
-    public function shouldThrow(ErrorException $e) {
+    public function shouldThrow(/** @noinspection PhpUnusedParameterInspection */
+        ErrorException $e) {
         return true;
     }
 
     public function notifyError(ErrorException $e) {
-        if (!$this->shouldThrow($e) || $e->isFatal()) {
+        if ($e->isFatal() || !$this->shouldThrow($e)) {
             parent::notifyError($e);
         } else {
             if ($e->isUserError() || self::isPhpBug61767Fixed())
