@@ -8,7 +8,7 @@ namespace IVT\ErrorHandler;
 
 ### `ErrorHandler`
 
-`ErrorHandler` is some means of handling PHP errors (fatal and non-fatal) and uncaught `Throwable`s. It defines three methods implementable by sub classes:
+`ErrorHandler` is some means of handling PHP errors (fatal and non-fatal) and uncaught `Throwable`s. It defines three methods implementable by subclasses:
 
 - `notifyError(ErrorException $e): void`
 
@@ -24,7 +24,7 @@ namespace IVT\ErrorHandler;
 
 Any `ErrorHandler` can be bound to PHP's error handling events with `$handler->bind()`. `set_error_handler()`, `set_exception_handler()` and `register_shutdown_function()` will be called appropriately. `->bind()` can be safely called multiple times.
 
-The shutdown handler and error handler can be set again with `set_shutdown_handler()` and `set_error_handler()` and restored with `restore_shutdown_handler()` and `restore_error_handler()`, however the shutdown handler (fatal error handler) will always be bound and cannot be unbound. 
+The exception handler and error handler can be overridden with `set_exception_handler()` and `set_error_handler()` and restored with `restore_shutdown_handler()` and `restore_error_handler()`, however the shutdown handler (fatal error handler) will always be bound and cannot be unbound. 
 
 For example, to send all your problems to Bugsnag:
 
