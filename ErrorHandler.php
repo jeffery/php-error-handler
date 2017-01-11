@@ -422,11 +422,36 @@ class IgnoreRepeatedHandler extends WrappedErrorHandler {
     }
 }
 
+/** Only let non-fatal PHP errors through that match a type mask */
+class FilterErrorsHandler extends WrappedErrorHandler {
+    /** @var int */
+    private $types;
+
+    /**
+     * @param ErrorHandler $handler
+     * @param int $types
+     */
+    public function __construct(ErrorHandler $handler, $types) {
+        parent::__construct($handler);
+        $this->types = $types;
+    }
+
+    public function notifyError(ErrorException $e) {
+        if ($e->isType($this->types) || $e->isFatal()) {
+            parent::notifyError($e);
+        }
+    }
+}
+
 /** Only let non-fatal PHP errors through with a given probability */
 class FilterErrorsWithChanceHandler extends WrappedErrorHandler {
     /** @var float */
     private $probability;
 
+    /**
+     * @param ErrorHandler $handler
+     * @param float $probability
+     */
     public function __construct(ErrorHandler $handler, $probability) {
         parent::__construct($handler);
         $this->probability = $probability;
