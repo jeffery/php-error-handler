@@ -447,18 +447,22 @@ class FilterErrorsHandler extends WrappedErrorHandler {
 class FilterErrorsWithChanceHandler extends WrappedErrorHandler {
     /** @var float */
     private $probability;
+    /** @var int */
+    private $types;
 
     /**
      * @param ErrorHandler $handler
      * @param float $probability
+     * @param int $types Mask for error types to filter. Errors not matching the mask are let through unconditionally.
      */
-    public function __construct(ErrorHandler $handler, $probability) {
+    public function __construct(ErrorHandler $handler, $probability, $types = -1) {
         parent::__construct($handler);
         $this->probability = $probability;
+        $this->types = $types;
     }
 
     public function notifyError(ErrorException $e) {
-        if ($e->isFatal() || $this->rand() < $this->probability) {
+        if ($e->isFatal() || !$e->isType($this->types) || $this->rand() < $this->probability) {
             parent::notifyError($e);
         }
     }
