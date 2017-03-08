@@ -351,6 +351,17 @@ final class AggregateErrorHandler extends ErrorHandler {
 
 /** Throw non-fatal ErrorExceptions */
 class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
+    private $types;
+
+    /**
+     * @param ErrorHandler $handler
+     * @param int $types The error types to throw. Defaults to all. Fatal errors are never thrown.
+     */
+    public function __construct(ErrorHandler $handler, $types = -1) {
+        parent::__construct($handler);
+        $this->types = $types;
+    }
+
     private static function isPhpBug61767Fixed() {
         // Fixed in 5.4.8 and 5.3.18
         if (\PHP_VERSION_ID >= 50400)
@@ -364,9 +375,7 @@ class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
     }
 
     public function notifyError(ErrorException $e) {
-        if ($e->isFatal() || !$this->shouldThrow($e)) {
-            parent::notifyError($e);
-        } else {
+        if (!$e->isFatal() && $e->isType($this->types) && $this->shouldThrow($e)) {
             if ($e->isUserError() || self::isPhpBug61767Fixed())
                 throw $e;
 
@@ -376,6 +385,8 @@ class ThrowErrorExceptionsHandler extends WrappedErrorHandler {
             $this->notifyThrowable(self::createThrowable($e), true);
             exit;
         }
+
+        parent::notifyError($e);
     }
 }
 
