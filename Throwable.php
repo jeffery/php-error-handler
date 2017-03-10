@@ -1,27 +1,16 @@
 <?php
 
+// When observed via PHP's Reflection API, this is intended to look as close as possible to the native Throwable
+// interface that ships with PHP 7. For that reason, please don't add, remove, re-order or change the signature or
+// doc comment of any entries in this interface.
+
 interface Throwable {
-    /** @return string */
     public function getMessage();
-
-    /** @return int */
     public function getCode();
-
-    /** @return string */
     public function getFile();
-
-    /** @return int */
     public function getLine();
-
-    /** @return array */
     public function getTrace();
-
-    /** @return string */
-    public function getTraceAsString();
-
-    /** @return Throwable */
     public function getPrevious();
-
-    /** @return string */
+    public function getTraceAsString();
     public function __toString();
 }
