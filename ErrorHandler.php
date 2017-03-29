@@ -291,7 +291,22 @@ class NullHandler extends ErrorHandler {
     }
 }
 
-class WrappedErrorHandler extends ErrorHandler {
+abstract class DelegateErrorHandler extends ErrorHandler {
+    public function notifyThrowable(Throwable $e, $fatal) {
+        $this->getHandler()->notifyThrowable($e, $fatal);
+    }
+
+    public function notifyError(ErrorException $e) {
+        $this->getHandler()->notifyError($e);
+    }
+
+    /**
+     * @return ErrorHandler
+     */
+    public abstract function getHandler();
+}
+
+class WrappedErrorHandler extends DelegateErrorHandler {
     private $handler;
 
     public function __construct(ErrorHandler $handler) {
@@ -304,12 +319,8 @@ class WrappedErrorHandler extends ErrorHandler {
         $this->handler->flush();
     }
 
-    public function notifyError(ErrorException $e) {
-        $this->handler->notifyError($e);
-    }
-
-    public function notifyThrowable(Throwable $e, $fatal) {
-        $this->handler->notifyThrowable($e, $fatal);
+    public function getHandler() {
+        return $this->handler;
     }
 }
 
