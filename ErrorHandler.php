@@ -580,7 +580,7 @@ final class BrowserLogger extends \Psr\Log\AbstractLogger {
     }
 }
 
-/** Render an error page for errors on screen. On the CLI, just dumps the error to STDERR. */
+/** Render an error page for errors on screen. */
 class ErrorPageHandler extends ErrorHandler {
     public function notifyThrowable(Throwable $e, $fatal) {
         if (!$fatal)
@@ -598,7 +598,6 @@ class ErrorPageHandler extends ErrorHandler {
 
     private function printErrorPage(Throwable $e) {
         if (\PHP_SAPI === 'cli') {
-            \fwrite(\STDERR, $this->generatePlainText($e));
             return;
         }
 
@@ -650,10 +649,6 @@ class ErrorPageHandler extends ErrorHandler {
 	</body>
 </html>
 ';
-    }
-
-    public function generatePlainText(Throwable $e) {
-        return $e->__toString() . "\n";
     }
 }
 
