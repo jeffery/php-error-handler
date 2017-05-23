@@ -211,7 +211,7 @@ abstract class ErrorHandler {
         return $x;
     }
 
-    private $bound = false;
+    private $fatalDone = false;
 
     public function __construct() {
     }
@@ -222,6 +222,10 @@ abstract class ErrorHandler {
     public final function bind() {
         $self = $this;
 
+        // I can't just reference this via $self (or $this) because closures in
+        // PHP 5.3 don't have access to private properties.
+        $fatalDone =& $this->fatalDone;
+
         \set_error_handler(function ($type, $message, $file, $line, $context) use ($self) {
             $error = new ErrorException($message, 0, $type, $file, $line);
             $error->popStackFrame();
@@ -229,18 +233,27 @@ abstract class ErrorHandler {
             $error->setCode($error->getConstant());
 
             $self->notifyError($error);
+
+            // Allow PHP's builtin error handler to continue (for logging to stderr etc)
+            return false;
         });
 
-        \set_exception_handler(function ($e) use ($self) {
+        \set_exception_handler(function ($e) use ($self, &$fatalDone) {
             $self->notifyThrowable(ErrorHandler::createThrowable($e), true);
+
+            $self->flush();
+
+            // Throw the exception again so PHP's builtin error handler handles it too, but
+            // set $fatalDone = true so we know to ignore it in the shutdown handler.
+            $fatalDone = true;
+
+            throw $e;
         });
 
-        // Don't register our shutdown function more than once, otherwise it'll get called multiple times. Shutdown
-        // functions can't be unregistered or overridden, so once we've registered it once we don't have to again.
-        if (!$this->bound) {
-            \register_shutdown_function(function () use ($self) {
-                \ini_set('memory_limit', '-1');
+        \register_shutdown_function(function () use ($self, &$fatalDone) {
+            \ini_set('memory_limit', '-1');
 
+            if (!$fatalDone) {
                 $error = ErrorException::getLast();
 
                 if ($error && $error->isFatal() && !$error->isXDebugError()) {
@@ -248,12 +261,14 @@ abstract class ErrorHandler {
 
                     $self->notifyError($error);
                 }
+            }
 
-                $self->flush();
-            });
+            $self->flush();
 
-            $this->bound = true;
-        }
+            // This is to avoid handling the same fatal error twice if this shutdown function was bound multiple times
+            // (eg because ->bind() was called multiple times)
+            $fatalDone = true;
+        });
     }
 
     /**
@@ -565,7 +580,7 @@ final class BrowserLogger extends \Psr\Log\AbstractLogger {
     }
 }
 
-/** Render an error page for errors on screen. On the CLI, just dumps the error to STDERR. */
+/** Render an error page for errors on screen. */
 class ErrorPageHandler extends ErrorHandler {
     public function notifyThrowable(Throwable $e, $fatal) {
         if (!$fatal)
@@ -583,7 +598,6 @@ class ErrorPageHandler extends ErrorHandler {
 
     private function printErrorPage(Throwable $e) {
         if (\PHP_SAPI === 'cli') {
-            \fwrite(\STDERR, $this->generatePlainText($e));
             return;
         }
 
@@ -635,10 +649,6 @@ class ErrorPageHandler extends ErrorHandler {
 	</body>
 </html>
 ';
-    }
-
-    public function generatePlainText(Throwable $e) {
-        return $e->__toString() . "\n";
     }
 }
 

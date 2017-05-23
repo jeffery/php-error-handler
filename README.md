@@ -26,6 +26,8 @@ Any `ErrorHandler` can be bound to PHP's error handling events with `$handler->b
 
 The exception handler and error handler can be overridden with `set_exception_handler()` and `set_error_handler()` and restored with `restore_exception_handler()` and `restore_error_handler()`, however the shutdown handler (fatal error handler) will always be bound and cannot be unbound. 
 
+PHP's default error handler will still run, so errors can continue to be logged to `STDERR`, syslog or a log file. The INI settings [`display_errors`](http://php.net/manual/en/errorfunc.configuration.php#ini.display-errors), [`log_errors`](http://php.net/manual/en/errorfunc.configuration.php#ini.log-errors), [`error_log`](http://php.net/manual/en/errorfunc.configuration.php#ini.error-log), and [`error_reporting`](http://php.net/manual/en/errorfunc.configuration.php#ini.error-reporting) should be set appropriately.
+
 For example, to send all your problems to Bugsnag:
 
 ```php
